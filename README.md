@@ -212,11 +212,37 @@ screenbeam shot --push                   # 截完顺手推送到手机
 
 页面上的按钮：
 
-- **立即截屏** —— 让 Mac 现在截一张（手机上直接触发）
-- **填充 / 适应** —— 切换图片缩放方式
-- **全屏** —— 隐藏页面框架，只看图
+| 按钮 | 作用 |
+| --- | --- |
+| **截屏** | 让 Mac 现在截一张（手机上直接触发） |
+| **连续:开/关** | 让 Mac 每 10 秒自动截一张（画面没变会跳过，不刷屏） |
+| **整屏 / 窗口** | 切换取景范围。**窗口 = 只截最前台那个窗口**，分享时不会带上整个桌面 |
+| **填充 / 适应** | 切换图片缩放方式 |
+| **全屏** | 隐藏页面框架，只看图 |
+| **问 AI** | 打开问答面板，就当前这张截图向模型提问（见下） |
+| **保存** | 把当前这张图下载到手机（存到「文件 → 下载」；长按图片可直接存到相册） |
+| **解除配对** | 撤销这台手机的访问权 |
 
 页面通过 SSE（Server-Sent Events）接收更新。如果网络环境会把 SSE 缓冲掉（部分公司代理会），页面会自动退化成每 3 秒轮询一次。
+
+### 问 AI：让模型看这张截图
+
+点 **问 AI** 打开底部面板，输入问题，模型会拿到**当前显示的这张截图**作为上下文来回答。可以连续追问，历史会一起带上。
+
+- **图片只带当前这张。** 追问时不会重复回放历史里的图片，否则每一轮都会重复计费。换一张新截图会自动清空对话 —— 之前的回答是针对另一张图的。
+- **API 就在面板下方配置**：提供商、Base URL、模型、API Key。填完勾选「启用」并保存。
+- **Key 保存在 Mac 上**（`config.json`），不会发回手机：读取接口只返回「是否已配置」，面板里的 Key 输入框永远是空的，留空表示不修改。
+
+支持两种接口形状：
+
+| 提供商 | 说明 |
+| --- | --- |
+| **Anthropic** | Messages API，默认模型 `claude-opus-5` |
+| **OpenAI 兼容** | chat/completions 形状。覆盖 OpenAI，以及 DeepSeek、Moonshot、通义、智谱、SiliconFlow、Ollama 等一切兼容端点 —— 改 Base URL 和模型名即可 |
+
+**模型必须支持图片输入**，否则接口会报错。纯文本模型不能用。
+
+> ⚠️ 当前版本是**一次性返回**，没有流式输出 —— 模型思考期间面板上会显示「思考中」，等模型返回完整答案。视觉模型通常几秒到几十秒。
 
 ### 定时截图
 
@@ -298,7 +324,7 @@ Webhook 模板里可用的占位符：`{{text}}` `{{image_url}}` `{{viewer_url}}
 
 ## 配置文件
 
-`~/Library/Application Support/ScreenBeam/config.json`，首次运行自动生成。
+`~/Library/Application Support/PHONE-CATCH-SCREEN/config.json`，首次运行自动生成。
 
 ```jsonc
 {
@@ -330,8 +356,20 @@ Webhook 模板里可用的占位符：`{{text}}` `{{image_url}}` `{{viewer_url}}
   },
   "notify": {
     "onManualCapture": false,
-    "caption": "ScreenBeam · {host} · {time}",
+    "caption": "PHONE·CATCH·SCREEN · {host} · {time}",
     "channels": [ /* 见上文 */ ]
+  },
+  "llm": {                      // 手机端「问 AI」面板里也能改
+    "enabled": false,
+    "provider": "anthropic",    // anthropic | openai（OpenAI 兼容）
+    "baseURL": "https://api.anthropic.com",
+    "apiKey": "",               // 只写不读：读取接口永不返回它
+    "model": "claude-opus-5",   // 必须支持图片输入
+    "maxTokens": 16000,         // 别设太小，思考也会占用这个额度
+    "effort": "low",            // Anthropic 专用：low|medium|high|xhigh|max
+    "systemPrompt": "……",       // 默认已针对「看截图回答问题」调过
+    "timeoutSeconds": 120,
+    "useFallbacks": true        // Anthropic 专用：被安全策略拒绝时自动转其他模型
   }
 }
 ```
@@ -339,6 +377,13 @@ Webhook 模板里可用的占位符：`{{text}}` `{{image_url}}` `{{viewer_url}}
 **容错设计**：配置是给人手改的，所以缺字段、多字段、类型写错都不会导致服务起不来 —— 一律回退到默认值。
 
 `caption` 可用占位符：`{host}` `{time}` `{date}` `{source}` `{width}` `{height}` `{url}`。
+
+关于 `llm` 的几个坑：
+
+- **`useFallbacks` 会发一个 beta 头**（`server-side-fallback-2026-07-01`）。如果你用的中转/代理不认这个头，请求会直接失败 —— 把它设成 `false` 即可。
+- **`effort` 只有较新的 Anthropic 模型支持**。换成老模型时报错的话，把它设成 `null`（或删掉这一行）。
+- **在手机上切换 provider 会自动改 Base URL**（切到对应服务的默认地址），但**不会**动模型名 —— 模型得你自己填对，因为只有你知道要用哪个。
+- **`apiKey` 明文存在这个文件里**，权限是 `0600`。它只写不读：读取接口永远不会把它发回手机。
 
 ### 隐私模式：只截当前窗口
 
@@ -369,6 +414,9 @@ Webhook 模板里可用的占位符：`{{text}}` `{{image_url}}` `{{viewer_url}}
 | POST | `/api/capture/mode?mode=display\|window` | 切换整屏 / 当前窗口（会写回配置文件） |
 | POST | `/api/push?recapture=1` | 推送最新一张 |
 | POST | `/api/unpair` | 设备自己解除配对 |
+| GET | `/api/llm/config` | 读取 AI 设置。**永不返回 API Key**，只返回 `hasKey` |
+| POST | `/api/llm/config` | 修改 AI 设置。`apiKey` 只写不读，留空表示不修改 |
+| POST | `/api/llm/ask` | `{question, shotId?, history?}` → 就当前截图提问 |
 | POST | `/api/pair/code` | 🔑 生成新的配对码 |
 | GET | `/api/devices` | 🔑 列出已配对设备（不含令牌，也不含哈希） |
 | POST | `/api/devices/revoke?id=<id>` | 🔑 撤销设备 |
