@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.sarainoq.screenbeam</string>
+	<key>CFBundleName</key>
+	<string>PHONE-CATCH-SCREEN</string>
+	<key>CFBundleDisplayName</key>
+	<string>PHONE·CATCH·SCREEN</string>
+	<key>CFBundleExecutable</key>
+	<string>screenbeam</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__VERSION__</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+
+	<!-- Background agent: no Dock icon, no app switcher entry. The menu bar
+	     belongs to the user; this thing should be invisible until asked. -->
+	<key>LSUIElement</key>
+	<true/>
+
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>NSSupportsSuddenTermination</key>
+	<false/>
+</dict>
+</plist>
