@@ -535,18 +535,26 @@ public enum WebViewer {
     toastTimer = setTimeout(function () { say(el.toast, ""); }, 4500);
   }
 
+  // Only an explicit `unauthenticated` marker means this device's own token is
+  // dead. Deciding that from a bare 401/403 was wrong: the configured model API
+  // rejecting the *server's* key, and master-only routes, answer with those same
+  // codes — so every failed question wiped the pairing and threw the page back to
+  // the pairing screen.
   async function api(path, options) {
     var response = await fetch(withToken(path), options || {});
-    if (response.status === 401 || response.status === 403) {
-      if (storedToken()) {
-        forgetDevice();
-        showBoot("配对已失效，请重新配对。");
-        throw new Error("unauthorized");
-      }
-    }
+
     var body = null;
     try { body = await response.json(); } catch (_) { body = {}; }
-    if (!response.ok) throw new Error(body.error || ("HTTP " + response.status));
+    body = body || {};
+
+    if (body.code === "unauthenticated") {
+      forgetDevice();
+      showBoot("配对已失效，请重新配对。");
+      throw new Error("unauthorized");
+    }
+    if (!response.ok) {
+      throw new Error(body.error || ("HTTP " + response.status));
+    }
     return body;
   }
 

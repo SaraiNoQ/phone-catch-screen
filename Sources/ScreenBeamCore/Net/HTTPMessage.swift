@@ -250,7 +250,15 @@ public extension HTTPResponse {
         text(string, status: status, contentType: "text/html; charset=utf-8")
     }
 
-    static func error(_ status: Int, _ message: String) -> HTTPResponse {
-        json(["ok": false, "error": message], status: status)
+    /// - Parameter code: a machine-readable marker for cases the client has to
+    ///   act on rather than just display. `"unauthenticated"` means the caller's
+    ///   own credential is bad; it is the only thing that should make a paired
+    ///   phone discard its token. A bare 4xx status is not enough to decide that,
+    ///   because unrelated failures — a model API rejecting the *server's* key,
+    ///   or a master-only route — also come back as 401/403.
+    static func error(_ status: Int, _ message: String, code: String? = nil) -> HTTPResponse {
+        var object: [String: Any] = ["ok": false, "error": message]
+        if let code { object["code"] = code }
+        return json(object, status: status)
     }
 }

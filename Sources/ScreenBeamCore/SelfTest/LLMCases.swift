@@ -311,6 +311,73 @@ enum LLMCases {
             catch { threw = true }
             try check(threw, "缺少 choices 应抛错")
         }),
+
+        // ---- Status codes must not collide with device authentication -------
+        //
+        // 401/403 are how this server tells a phone "your own credential is bad" —
+        // the one thing that makes it discard its pairing. A model API rejecting
+        // the *server's* key used to come back as 401, so every failed question
+        // logged the phone out and threw it back to the pairing screen.
+
+        ("LLM 错误绝不映射到 401/403", {
+            let samples: [LLMError] = [
+                .notConfigured,
+                .missingKey,
+                .invalidBaseURL(""),
+                .httpFailed(status: 401, body: "unauthorized"),
+                .httpFailed(status: 403, body: "forbidden"),
+                .httpFailed(status: 400, body: "bad request"),
+                .httpFailed(status: 429, body: "rate limited"),
+                .httpFailed(status: 500, body: "boom"),
+                .malformedResponse("x"),
+                .refused(nil),
+                .refused("cyber"),
+            ]
+            for error in samples {
+                let status = error.httpStatus
+                try check(
+                    status != 401 && status != 403,
+                    "\(error) 映射成了 \(status)，会与设备鉴权状态码冲突"
+                )
+            }
+        }),
+
+        ("上游拒绝 Key 时返回 400 并说清原因", {
+            let rejected = LLMError.httpFailed(status: 401, body: "invalid api key")
+            try checkEqual(rejected.httpStatus, 400, "上游 401 应转成 400")
+            try check(rejected.description.contains("Key"), "信息里应提到 Key：\(rejected.description)")
+
+            let forbidden = LLMError.httpFailed(status: 403, body: "no access")
+            try checkEqual(forbidden.httpStatus, 400, "上游 403 也应转成 400")
+
+            // Anything else upstream is a gateway problem, not the caller's fault.
+            try checkEqual(
+                LLMError.httpFailed(status: 500, body: "boom").httpStatus, 502, "上游 5xx"
+            )
+            try checkEqual(
+                LLMError.httpFailed(status: 429, body: "slow down").httpStatus, 502, "上游 429"
+            )
+        }),
+
+        ("错误响应只在需要时带 code 标记", {
+            func decode(_ response: HTTPResponse) throws -> [String: Any] {
+                guard let any = try? JSONSerialization.jsonObject(with: response.body) else {
+                    throw TestFailure(message: "响应体不是 JSON")
+                }
+                return try checkUnwrap(any as? [String: Any], "响应体是对象")
+            }
+
+            let auth = try decode(.error(401, "x", code: "unauthenticated"))
+            try checkEqual(auth["code"] as? String, "unauthenticated", "鉴权失败应带标记")
+
+            let forbidden = try decode(.error(403, "x", code: "forbidden"))
+            try checkEqual(forbidden["code"] as? String, "forbidden", "越权应带不同的标记")
+
+            // An ordinary failure must not carry a marker: the phone treats the
+            // marker as "throw away my pairing", so adding it casually is dangerous.
+            let plain = try decode(.error(400, "x"))
+            try check(plain["code"] == nil, "普通错误不应带 code")
+        }),
     ]
 
     // MARK: - Helpers

@@ -59,7 +59,7 @@ enum Router {
 
         guard let credential = authorize(request, responder: responder, engine: engine) else {
             Log.warn("拒绝未授权请求：\(request.method) \(request.path)（来自 \(responder.remoteAddress)）")
-            responder.respond(.error(401, "缺少或错误的凭证"))
+            responder.respond(.error(401, "缺少或错误的凭证", code: "unauthenticated"))
             return
         }
 
@@ -119,7 +119,14 @@ enum Router {
 
     private static func requireMaster(_ credential: Credential, _ responder: HTTPResponder) -> Bool {
         guard credential.isMaster else {
-            responder.respond(.error(403, "该操作需要主令牌（请用 Mac 上的 screenbeam 命令执行）"))
+            // Deliberately *not* `unauthenticated`: the device's credential is
+            // perfectly good, it just is not allowed here. Marking it as an auth
+            // failure would sign the phone out for touching the wrong route.
+            responder.respond(.error(
+                403,
+                "该操作需要主令牌（请用 Mac 上的 screenbeam 命令执行）",
+                code: "forbidden"
+            ))
             return false
         }
         return true
@@ -554,8 +561,13 @@ enum Router {
                 )
                 responder.respond(.json(["ok": true, "answer": answer.json]))
             } catch let error as LLMError {
+                // Logged because a failed ask is otherwise invisible: the phone
+                // shows the message, but nothing lands in the daemon log to
+                // diagnose it from.
+                Log.warn("AI 提问失败：\(error.description)")
                 responder.respond(.error(error.httpStatus, error.description))
             } catch {
+                Log.warn("AI 提问失败（未预期）：\(error)")
                 responder.respond(.error(502, String(describing: error)))
             }
         }

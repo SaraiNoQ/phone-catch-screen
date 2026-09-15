@@ -21,13 +21,27 @@ struct DaemonClient {
     }
 
     private func request(_ path: String, method: String = "GET") throws -> URLRequest {
+        // Split any query off before appending. `appendingPathComponent` percent-
+        // encodes the whole argument, so a path like "api/devices/revoke?id=1"
+        // would become ".../revoke%3Fid=1" and the route would never match — the
+        // server would see one segment, "revoke?id=1", instead of two.
+        let parts = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        let pathOnly = String(parts[0])
+
         guard var components = URLComponents(
-            url: baseURL.appendingPathComponent(path),
+            url: baseURL.appendingPathComponent(pathOnly),
             resolvingAgainstBaseURL: false
         ) else {
             throw CLIError.invalidConfiguration("接口地址无效：\(path)")
         }
-        components.queryItems = [URLQueryItem(name: "token", value: token)]
+
+        var items = [URLQueryItem(name: "token", value: token)]
+        if parts.count > 1 {
+            let extra = URLComponents(string: "?\(parts[1])")?.queryItems ?? []
+            items.append(contentsOf: extra)
+        }
+        components.queryItems = items
+
         guard let url = components.url else {
             throw CLIError.invalidConfiguration("接口地址无效：\(path)")
         }

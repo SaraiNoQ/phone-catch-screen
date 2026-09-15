@@ -51,6 +51,13 @@ public enum LLMError: Error, CustomStringConvertible {
         case .invalidBaseURL(let value):
             return "Base URL 无效：\(value)"
         case .httpFailed(let status, let body):
+            if Self.isCredentialRejection(status) {
+                return """
+                模型服务拒绝了这台 Mac 上配置的 API Key（HTTP \(status)）。
+                请到「问 AI」面板检查 Key 与 Base URL 是否匹配。
+                \(body)
+                """
+            }
             return "模型接口返回 HTTP \(status)：\(body)"
         case .malformedResponse(let detail):
             return "模型返回内容无法解析：\(detail)"
@@ -59,13 +66,23 @@ public enum LLMError: Error, CustomStringConvertible {
         }
     }
 
-    /// Distinguishes "not set up yet" from "the request failed", so the phone can
-    /// show a setup hint instead of a red error.
+    static func isCredentialRejection(_ status: Int) -> Bool {
+        status == 401 || status == 403
+    }
+
+    /// Kept away from 401/403 on purpose.
+    ///
+    /// Those two codes are reserved for *this server's* view of the caller's
+    /// credential. An upstream provider rejecting our API key is a configuration
+    /// problem on this Mac, and reporting it as 401 made the phone decide its own
+    /// device token was dead — it wiped the token and dropped back to the pairing
+    /// screen on every failed question.
     public var httpStatus: Int {
         switch self {
         case .notConfigured, .missingKey, .invalidBaseURL: return 400
         case .refused: return 200
-        case .httpFailed(let status, _): return status == 401 ? 401 : 502
+        case .httpFailed(let status, _):
+            return Self.isCredentialRejection(status) ? 400 : 502
         case .malformedResponse: return 502
         }
     }

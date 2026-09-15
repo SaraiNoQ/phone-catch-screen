@@ -112,7 +112,13 @@ public final class BeamEngine: @unchecked Sendable {
             saveDirectory: config.history.saveDirectory,
             retentionMinutes: config.history.retentionMinutes
         )
-        self.devices = DeviceStore()
+        // Sits beside the config, not at a fixed path. Otherwise a daemon started
+        // with `--config /tmp/other.json` would still read and write the user's
+        // real credentials — which is exactly how a test run once added phantom
+        // devices to a live install.
+        self.devices = DeviceStore(
+            fileURL: configURL.deletingLastPathComponent().appendingPathComponent("devices.json")
+        )
         self.notifierService = NotifierService(config: self.config)
     }
 
