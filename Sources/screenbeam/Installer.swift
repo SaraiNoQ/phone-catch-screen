@@ -69,7 +69,6 @@ enum Installer {
         try writeLaunchAgent(bundle: destination)
         print(Term.ok("  已写入 ") + BeamPaths.launchAgentFile.path)
 
-        let binary = destination.appendingPathComponent("Contents/MacOS/screenbeam").path
         let bootstrap = Shell.run("/bin/launchctl", ["bootstrap", "gui/\(getuid())", BeamPaths.launchAgentFile.path])
         if bootstrap.status != 0 {
             // Already-loaded agents report an error here; re-running install
@@ -79,18 +78,24 @@ enum Installer {
             print(Term.ok("  已注册 LaunchAgent（\(label)）"))
         }
 
-        // Running the bundled binary once is what registers the app with TCC and
-        // raises the consent dialog. Without this the permission pane would not
-        // even list it.
-        print("")
-        print("  正在申请「屏幕录制」权限，请在弹出的对话框中允许…")
-        _ = Shell.run(binary, ["perm", "--request"])
-
+        // Deliberately does NOT try to raise the consent dialog here.
+        //
+        // Two ways to trigger it, both wrong from the installer:
+        // executing the binary as a child of this run attributes the request to
+        // whatever launched the installer (a terminal, which usually already
+        // holds Screen Recording), so the app never gets registered; and
+        // `open -a` makes LaunchServices start the very same program the
+        // LaunchAgent owns, which strands the agent when that instance exits.
+        //
+        // The daemon already does this correctly: launchd starts it, so a
+        // `CGRequestScreenCaptureAccess` from inside it is attributed to the app.
         print("")
         print(Term.bold("  安装完成。接下来："))
-        print("  1. 在 系统设置 → 隐私与安全性 → 屏幕录制 中勾选 \(BeamPaths.appName)")
-        print("  2. 授权后服务会自动重启并生效")
-        print("  3. 执行 \(Term.accent("screenbeam url")) 获取手机访问地址与二维码")
+        print("  1. 系统设置 → 隐私与安全性 → 屏幕录制 → 勾选 \(BeamPaths.appDisplayName)")
+        print(Term.dim("     （对话框可能已经弹出；若没有，去上面的位置手动勾选）"))
+        print("  2. 勾选后执行 \(Term.accent("screenbeam restart")) 让授权生效")
+        print(Term.dim("     重新构建过的二进制会有新的代码哈希，旧授权会失效 —— 见 AGENTS.md"))
+        print("  3. 执行 \(Term.accent("screenbeam pair")) 生成配对码，手机扫码连接")
         print("")
     }
 

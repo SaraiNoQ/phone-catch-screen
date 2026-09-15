@@ -260,12 +260,68 @@ public enum WebViewer {
   #grab{grid-column:span 7}
   #live{grid-column:span 5}
   #m-display,#m-window,#fit,#zen{grid-column:span 3}
+  #ask{grid-column:span 6}
+  #save{grid-column:span 6}
 
   /* Same row, narrower cells — needs tighter type or "[ 整屏 ]" overflows its
      column on a 390px phone. */
   @media (max-width:430px){
     .controls .btn{padding:11px 4px;font-size:11.5px;letter-spacing:.02em}
   }
+
+  /* ---------- Ask sheet ---------- */
+  #askSheet{
+    position:fixed;inset:0;z-index:40;
+    display:flex;flex-direction:column;justify-content:flex-end;
+    background:rgba(0,0,0,.7);
+  }
+  .sheet{
+    background:var(--panel);
+    border-top:1px solid var(--line-hot);
+    max-height:88vh;
+    display:flex;flex-direction:column;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .sheet-head{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+    font-family:var(--mono);font-size:11px;letter-spacing:.22em;color:var(--ink-bright);
+    flex:0 0 auto;
+  }
+  .sheet-head .btn{margin-left:auto;min-height:30px;padding:4px 10px;font-size:11px}
+  .ask-log{
+    flex:1 1 auto;overflow-y:auto;
+    padding:12px;min-height:110px;
+    display:flex;flex-direction:column;gap:12px;
+  }
+  .turn{
+    font-size:14px;line-height:1.7;
+    white-space:pre-wrap;word-break:break-word;
+  }
+  .turn.user{color:var(--ink-bright)}
+  .turn.user::before{content:"› ";color:var(--dim)}
+  .turn.assistant{color:var(--ink)}
+  .turn.assistant::before{content:"· ";color:var(--dim)}
+  .turn.error{color:var(--err)}
+  .turn.pending{color:var(--dim)}
+  .turn.pending::after{content:"█";animation:blink 1.1s steps(1) infinite}
+  .ask-input{display:flex;gap:7px;padding:0 12px 10px;flex:0 0 auto}
+  .ask-input input{flex:1 1 auto;min-width:0}
+  .ask-settings{
+    padding:0 12px 14px;flex:0 0 auto;
+    display:flex;flex-direction:column;gap:10px;
+    max-height:52vh;overflow-y:auto;
+  }
+  .ask-settings select{
+    flex:1 1 auto;min-width:0;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+    padding:10px;border-radius:0;
+    font-family:var(--mono);font-size:14px;
+  }
+  .check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)}
+  .check input{width:auto;flex:0 0 auto;margin:0}
+  .divider{border-top:1px solid var(--line);margin:2px 0}
 
   .footbar{
     flex:0 0 auto;
@@ -348,12 +404,65 @@ public enum WebViewer {
     <button id="m-window" class="btn">[ 窗口 ]</button>
     <button id="fit" class="btn">[ 填充 ]</button>
     <button id="zen" class="btn">[ 全屏 ]</button>
+    <button id="ask" class="btn">[ 问 AI ]</button>
+    <button id="save" class="btn">[ 保存 ]</button>
   </div>
 
   <div class="footbar">
     <button id="unpair" class="btn danger">[ 解除配对 ]</button>
     <span id="toast" class="msg"></span>
   </div>
+
+  <!-- 问 AI：底部抽屉。图片始终是当前这张，问题由用户输入；历史只带文字，
+       图片不重复回放，否则每一轮都会重复计费。 -->
+  <section id="askSheet" hidden>
+    <div class="sheet">
+      <div class="sheet-head">
+        <span>ASK · 问这张截图</span>
+        <button id="ask-close" class="btn">[ 关闭 ]</button>
+      </div>
+
+      <div id="ask-log" class="ask-log">
+        <div class="turn assistant">问点什么吧。我会看当前这张截图来回答。</div>
+      </div>
+
+      <div class="ask-input">
+        <input id="ask-q" placeholder="例如：第三行写的什么？" autocomplete="off">
+        <button id="ask-send" class="btn primary">[ 发送 ]</button>
+      </div>
+
+      <div class="ask-settings">
+        <div class="divider"></div>
+        <label class="check">
+          <input type="checkbox" id="llm-enabled">
+          <span>启用 AI（关闭时「问 AI」不可用）</span>
+        </label>
+        <div class="row" style="display:flex;gap:8px">
+          <select id="llm-provider">
+            <option value="anthropic">Anthropic</option>
+            <option value="openai">OpenAI 兼容</option>
+          </select>
+        </div>
+        <label class="field" style="margin:0">
+          <span class="field-label">BASE URL</span>
+          <input id="llm-base" autocomplete="off" placeholder="https://api.anthropic.com">
+        </label>
+        <label class="field" style="margin:0">
+          <span class="field-label">MODEL</span>
+          <input id="llm-model" autocomplete="off" placeholder="claude-opus-5">
+        </label>
+        <label class="field" style="margin:0">
+          <span class="field-label">API KEY</span>
+          <input id="llm-key" type="password" autocomplete="off" placeholder="粘贴 API Key">
+        </label>
+        <button id="llm-save" class="btn">[ 保存设置 ]</button>
+        <p class="hint" style="font-size:12px">
+          Key 保存在 Mac 上（<code>config.json</code>），不会发回手机。
+          留空表示不修改。
+        </p>
+      </div>
+    </div>
+  </section>
 </section>
 
 <script>
@@ -370,10 +479,22 @@ public enum WebViewer {
     meta: $("meta"), toast: $("toast"),
     grab: $("grab"), live: $("live"),
     mDisplay: $("m-display"), mWindow: $("m-window"),
-    fit: $("fit"), zen: $("zen"), unpair: $("unpair")
+    fit: $("fit"), zen: $("zen"), unpair: $("unpair"),
+    save: $("save"), ask: $("ask"),
+    askSheet: $("askSheet"), askLog: $("ask-log"), askQ: $("ask-q"),
+    askSend: $("ask-send"), askClose: $("ask-close"),
+    llmEnabled: $("llm-enabled"), llmProvider: $("llm-provider"),
+    llmBase: $("llm-base"), llmModel: $("llm-model"),
+    llmKey: $("llm-key"), llmSave: $("llm-save")
   };
 
-  var lastShotID = null;
+  // The whole shot record, not just the id: the save button needs the extension,
+  // and the ask endpoint wants the id it is looking at.
+  var lastShot = null;
+
+  // Text-only history. The image is re-attached to the current question each
+  // turn, so replaying it here would multiply the image cost for nothing.
+  var askHistory = [];
   var toastTimer = null;
 
   // ---------------------------------------------------------------- credential
@@ -452,8 +573,18 @@ public enum WebViewer {
   // ---------------------------------------------------------------------- shots
 
   function display(info) {
-    if (!info || !info.id || info.id === lastShotID) return;
-    lastShotID = info.id;
+    if (!info || !info.id || (lastShot && info.id === lastShot.id)) return;
+
+    // A new picture invalidates the conversation: the earlier answers were about
+    // a different screen, and leaving them in context would have the model
+    // confidently answer about the wrong frame.
+    if (lastShot && askHistory.length) {
+      askHistory = [];
+      if (!el.askSheet.hidden) {
+        appendTurn("assistant", "（已切换到新截图，之前的对话已清空）");
+      }
+    }
+    lastShot = info;
 
     var src = withToken("/api/frame/" + info.id + "." + (info.ext || "jpg"));
     var preload = new Image();
@@ -645,6 +776,150 @@ public enum WebViewer {
     say(el.bootmsg, "已解除配对。", "ok");
   });
 
+  // ------------------------------------------------------------ save to phone
+
+  // Saved with a blob + `download` rather than by linking the image endpoint
+  // directly: a plain link would navigate, and iOS would open the picture
+  // instead of offering to keep it. Long-press still works as a fallback and is
+  // mentioned in the toast, because iOS routes this into Files rather than Photos.
+  async function saveImage() {
+    if (!lastShot) { toast("还没有截图", "err"); return; }
+
+    el.save.disabled = true;
+    el.save.textContent = "[ 保存中 ]";
+    try {
+      var response = await fetch(withToken(
+        "/api/frame/" + lastShot.id + "." + (lastShot.ext || "jpg")
+      ));
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      var blob = await response.blob();
+
+      var objectURL = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      link.href = objectURL;
+      link.download = "screenshot-" + lastShot.id + "." + (lastShot.ext || "jpg");
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Revoking immediately can cancel the save in progress.
+      setTimeout(function () { URL.revokeObjectURL(objectURL); }, 15000);
+
+      toast("已保存到「文件 → 下载」，长按图片可直接存到相册", "ok");
+    } catch (error) {
+      toast("保存失败：" + (error.message || error), "err");
+    } finally {
+      el.save.disabled = false;
+      el.save.textContent = "[ 保存 ]";
+    }
+  }
+
+  // ------------------------------------------------------------------ ask AI
+
+  function appendTurn(role, text, pending) {
+    var node = document.createElement("div");
+    node.className = "turn " + role + (pending ? " pending" : "");
+    node.textContent = text;
+    el.askLog.appendChild(node);
+    el.askLog.scrollTop = el.askLog.scrollHeight;
+    return node;
+  }
+
+  function openAsk() {
+    el.askSheet.hidden = false;
+    loadLLMSettings();
+  }
+
+  async function askQuestion() {
+    var question = el.askQ.value.trim();
+    if (!question) return;
+    if (!lastShot) { toast("先截一张图", "err"); return; }
+
+    appendTurn("user", question);
+    el.askQ.value = "";
+    el.askSend.disabled = true;
+    var pending = appendTurn("assistant", "思考中", true);
+
+    try {
+      var body = await api("/api/llm/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: question,
+          shotId: lastShot.id,
+          history: askHistory
+        })
+      });
+      var answer = (body.answer && body.answer.text) || "";
+      pending.classList.remove("pending");
+      pending.textContent = answer;
+      askHistory.push({ role: "user", text: question });
+      askHistory.push({ role: "assistant", text: answer });
+    } catch (error) {
+      pending.classList.remove("pending");
+      pending.classList.add("error");
+      pending.textContent = String(error.message || error);
+    } finally {
+      el.askSend.disabled = false;
+      el.askLog.scrollTop = el.askLog.scrollHeight;
+    }
+  }
+
+  async function loadLLMSettings() {
+    try {
+      var body = await api("/api/llm/config");
+      var llm = body.llm || {};
+      el.llmEnabled.checked = !!llm.enabled;
+      el.llmProvider.value = llm.provider || "anthropic";
+      el.llmBase.value = llm.baseURL || "";
+      el.llmModel.value = llm.model || "";
+      // The key is never sent back, so the field stays empty; the placeholder
+      // carries whether one is already stored.
+      el.llmKey.value = "";
+      el.llmKey.placeholder = llm.hasKey ? "已配置 · 留空则不修改" : "粘贴 API Key";
+    } catch (_) {
+      // Not fatal — the ask call will surface any real configuration problem.
+    }
+  }
+
+  async function saveLLMSettings() {
+    el.llmSave.disabled = true;
+    try {
+      var patch = {
+        enabled: el.llmEnabled.checked,
+        provider: el.llmProvider.value,
+        baseURL: el.llmBase.value.trim(),
+        model: el.llmModel.value.trim()
+      };
+      var key = el.llmKey.value.trim();
+      if (key) patch.apiKey = key;
+
+      var body = await api("/api/llm/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      var llm = body.llm || {};
+      el.llmBase.value = llm.baseURL || el.llmBase.value;
+      el.llmModel.value = llm.model || el.llmModel.value;
+      el.llmKey.value = "";
+      el.llmKey.placeholder = llm.hasKey ? "已配置 · 留空则不修改" : "粘贴 API Key";
+      toast(llm.enabled ? "AI 设置已保存并启用" : "AI 设置已保存（未启用）", "ok");
+    } catch (error) {
+      toast("保存失败：" + (error.message || error), "err");
+    } finally {
+      el.llmSave.disabled = false;
+    }
+  }
+
+  el.save.addEventListener("click", saveImage);
+  el.ask.addEventListener("click", openAsk);
+  el.askClose.addEventListener("click", function () { el.askSheet.hidden = true; });
+  el.askSend.addEventListener("click", askQuestion);
+  el.askQ.addEventListener("keydown", function (event) {
+    if (event.key === "Enter") askQuestion();
+  });
+  el.llmSave.addEventListener("click", saveLLMSettings);
+
   // ---------------------------------------------------------------------- start
 
   (function start() {
@@ -656,6 +931,9 @@ public enum WebViewer {
 
     if (hasCredential) {
       showApp();
+      // `#ask` deep-links straight to the panel, so it can be bookmarked and
+      // reopened without hunting through the controls.
+      if (/(?:^|[#&])ask\b/.test(location.hash || "")) openAsk();
       return;
     }
 

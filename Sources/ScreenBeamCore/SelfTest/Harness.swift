@@ -83,4 +83,5 @@ private func registeredCases() -> [(String, () throws -> Void)] {
         + ConfigCases.all
         + DeliveryCases.all
         + PairingCases.all
+        + LLMCases.all
 }

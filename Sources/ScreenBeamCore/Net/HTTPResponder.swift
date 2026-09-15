@@ -71,6 +71,26 @@ public final class HTTPResponder {
         }
     }
 
+    /// Pushes the idle deadline out, for handlers that legitimately take a long
+    /// time. A vision-model call can run for a minute; without this the
+    /// connection would be reaped mid-flight and the phone would just see a
+    /// dropped request with no explanation.
+    public func extendIdle(by seconds: TimeInterval) {
+        queue.async { [weak self] in
+            guard let self, self.state == .idle else { return }
+            self.idleDeadline?.cancel()
+
+            let total = Self.idleTimeout + max(0, seconds)
+            let item = DispatchWorkItem { [weak self] in
+                guard let self, self.state == .idle else { return }
+                Log.warn("HTTP 连接超时未响应，主动关闭。")
+                self.close()
+            }
+            self.idleDeadline = item
+            self.queue.asyncAfter(deadline: .now() + total, execute: item)
+        }
+    }
+
     // MARK: - One-shot response
 
     public func respond(_ response: HTTPResponse) {

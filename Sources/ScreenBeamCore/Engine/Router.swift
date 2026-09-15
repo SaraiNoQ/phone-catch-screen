@@ -178,6 +178,15 @@ enum Router {
         case ["api", "unpair"] where isPost:
             handleUnpair(responder, engine: engine, credential: credential)
 
+        case ["api", "llm", "config"] where isGet:
+            responder.respond(.json(["ok": true, "llm": engine.llmConfig().publicJSON]))
+
+        case ["api", "llm", "config"] where isPost:
+            handleLLMConfig(request, responder, engine: engine)
+
+        case ["api", "llm", "ask"] where isPost:
+            handleLLMAsk(request, responder, engine: engine)
+
         // Access management is master-only.
         case ["api", "pair", "code"] where isPost:
             guard requireMaster(credential, responder) else { return }
@@ -453,6 +462,102 @@ enum Router {
             ]))
         } catch {
             responder.respond(.error(500, String(describing: error)))
+        }
+    }
+
+    // MARK: - Vision model
+
+    private static func handleLLMConfig(
+        _ request: HTTPRequest,
+        _ responder: HTTPResponder,
+        engine: BeamEngine
+    ) {
+        guard let body = jsonBody(request) else {
+            responder.respond(.error(400, "需要 JSON 请求体"))
+            return
+        }
+
+        do {
+            let updated = try engine.updateLLMConfig { config in
+                if let value = body["enabled"] as? Bool { config.enabled = value }
+                if let value = body["baseURL"] as? String, !value.isEmpty { config.baseURL = value }
+                if let value = body["model"] as? String, !value.isEmpty { config.model = value }
+                if let value = body["systemPrompt"] as? String { config.systemPrompt = value }
+                if let value = body["maxTokens"] as? Int, value > 0 { config.maxTokens = value }
+                if let value = body["timeoutSeconds"] as? Double, value > 0 {
+                    config.timeoutSeconds = value
+                }
+                if let value = body["useFallbacks"] as? Bool { config.useFallbacks = value }
+                if let value = body["effort"] as? String {
+                    config.effort = value.isEmpty ? nil : value
+                }
+
+                // Write-only, and only when a value actually arrives: the phone
+                // never receives the current key, so an empty field must not
+                // wipe it.
+                if let key = body["apiKey"] as? String {
+                    let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty { config.apiKey = trimmed }
+                }
+
+                if let raw = body["provider"] as? String,
+                   let provider = LLMConfig.Provider(rawValue: raw),
+                   provider != config.provider {
+                    config.provider = provider
+                    // Switching provider but keeping the old endpoint is the
+                    // obvious way to land on a confusing 404, so move it to that
+                    // provider's default. The model is left alone — only the user
+                    // knows which one they want.
+                    config.baseURL = LLMConfig.Provider.defaultBaseURL(for: provider)
+                }
+            }
+            responder.respond(.json(["ok": true, "llm": updated.publicJSON]))
+        } catch {
+            responder.respond(.error(500, String(describing: error)))
+        }
+    }
+
+    private static func handleLLMAsk(
+        _ request: HTTPRequest,
+        _ responder: HTTPResponder,
+        engine: BeamEngine
+    ) {
+        let body = jsonBody(request) ?? [:]
+        let question = (body["question"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        guard !question.isEmpty else {
+            responder.respond(.error(400, "问题不能为空"))
+            return
+        }
+
+        let history = (body["history"] as? [[String: Any]] ?? []).compactMap { entry -> LLMTurn? in
+            guard let raw = entry["role"] as? String,
+                  let role = LLMTurn.Role(rawValue: raw),
+                  let text = entry["text"] as? String,
+                  !text.isEmpty else { return nil }
+            return LLMTurn(role: role, text: text)
+        }
+
+        // A vision call can take a minute. The default idle reap would drop the
+        // connection long before the model answers, and the phone would just see
+        // a dead request with no explanation.
+        responder.extendIdle(by: engine.llmConfig().timeoutSeconds)
+
+        let shotID = body["shotId"] as? String
+        Task {
+            do {
+                let answer = try await engine.askAboutScreen(
+                    question: question,
+                    history: history,
+                    shotID: shotID
+                )
+                responder.respond(.json(["ok": true, "answer": answer.json]))
+            } catch let error as LLMError {
+                responder.respond(.error(error.httpStatus, error.description))
+            } catch {
+                responder.respond(.error(502, String(describing: error)))
+            }
         }
     }
 

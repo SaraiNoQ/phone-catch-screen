@@ -2,7 +2,8 @@ import Foundation
 
 // MARK: - Decoding helper
 
-private extension KeyedDecodingContainer {
+/// Not `private`: the same lenient decoding is used by `LLMConfig` in its own file.
+extension KeyedDecodingContainer {
     /// Reads `key`, falling back to `fallback` when the key is absent *or* holds
     /// the wrong type. The config file is meant to be hand-edited, so a missing
     /// or malformed key should degrade to the default rather than blow up the
@@ -20,19 +21,22 @@ public struct BeamConfig: Codable, Sendable {
     public var watch: WatchConfig
     public var history: HistoryConfig
     public var notify: NotifyConfig
+    public var llm: LLMConfig
 
     public init(
         server: ServerConfig = ServerConfig(),
         capture: CaptureConfig = CaptureConfig(),
         watch: WatchConfig = WatchConfig(),
         history: HistoryConfig = HistoryConfig(),
-        notify: NotifyConfig = NotifyConfig()
+        notify: NotifyConfig = NotifyConfig(),
+        llm: LLMConfig = LLMConfig()
     ) {
         self.server = server
         self.capture = capture
         self.watch = watch
         self.history = history
         self.notify = notify
+        self.llm = llm
     }
 
     public init(from decoder: Decoder) throws {
@@ -42,6 +46,7 @@ public struct BeamConfig: Codable, Sendable {
         watch = c.value(.watch, WatchConfig())
         history = c.value(.history, HistoryConfig())
         notify = c.value(.notify, NotifyConfig())
+        llm = c.value(.llm, LLMConfig())
     }
 }
 
@@ -307,7 +312,10 @@ public enum ConfigStore {
                     .with { $0.botToken = ""; $0.chatId = ""; $0.attachImage = true },
                 NotifyChannel(kind: .feishu, enabled: false, name: "飞书")
                     .with { $0.webhook = "" },
-            ])
+            ]),
+            // Shipped off: it needs an API key the user has to supply. The phone
+            // UI is where they fill it in.
+            llm: LLMConfig(enabled: false)
         )
     }
 

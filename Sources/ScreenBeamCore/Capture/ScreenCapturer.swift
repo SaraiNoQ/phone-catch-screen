@@ -29,16 +29,39 @@ public struct ScreenCapturer: Sendable {
         displayIndex: Int,
         showCursor: Bool
     ) async throws -> RawFrame {
-        guard ScreenRecordingPermission.isGranted else {
-            throw CaptureError.screenRecordingPermissionDenied
+        // No `CGPreflightScreenCaptureAccess` gate here, deliberately.
+        //
+        // That call's answer is cached inside the process: once a process has
+        // been told "no", it keeps saying "no" for the rest of its life, even
+        // after the user flips the switch in System Settings. A daemon is long
+        // lived, so gating on it would leave a granted machine permanently
+        // unable to capture, with no way to recover short of a restart.
+        //
+        // ScreenCaptureKit is the authority instead, and its refusal is mapped
+        // onto the same actionable error below.
+        do {
+            switch mode {
+            case .display:
+                return try await captureDisplay(index: displayIndex, showCursor: showCursor)
+            case .window:
+                return try await captureFrontmostWindow(showCursor: showCursor)
+            }
+        } catch {
+            throw Self.mapCaptureFailure(error)
         }
+    }
 
-        switch mode {
-        case .display:
-            return try await captureDisplay(index: displayIndex, showCursor: showCursor)
-        case .window:
-            return try await captureFrontmostWindow(showCursor: showCursor)
+    /// Turns ScreenCaptureKit's "user declined" into the permission error, so
+    /// callers surface the hint about System Settings rather than a raw
+    /// framework code.
+    private static func mapCaptureFailure(_ error: Error) -> Error {
+        let nsError = error as NSError
+        // SCStreamErrorDomain / SCStreamError.userDeclined (-3801).
+        if nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain",
+           nsError.code == -3801 {
+            return CaptureError.screenRecordingPermissionDenied
         }
+        return error
     }
 
     // MARK: - Whole display

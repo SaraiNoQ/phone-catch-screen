@@ -377,8 +377,14 @@ public final class BeamEngine: @unchecked Sendable {
         }
 
         Log.warn("尚未获得「屏幕录制」权限。")
+        // Requested from here rather than from the installer on purpose: the
+        // process asking must be the app itself. Run by launchd, this call is
+        // attributed to the app, so the app gets registered in the pane and the
+        // consent dialog names it. A request made from a shell would be
+        // attributed to the terminal instead.
         ScreenRecordingPermission.request()
         Log.warn("请打开 系统设置 → 隐私与安全性 → 屏幕录制，勾选 \(BeamPaths.appDisplayName)。")
+        Log.warn("勾选后若仍未生效，执行 screenbeam restart（预检结果在进程内是缓存的）。")
 
         permissionTask = Task { [weak self] in
             guard let self else { return }
@@ -508,6 +514,61 @@ public final class BeamEngine: @unchecked Sendable {
         } else {
             stopWatch()
         }
+    }
+
+    // MARK: - Vision model
+
+    public func llmConfig() -> LLMConfig {
+        currentConfig().llm
+    }
+
+    /// Applies a partial settings update and persists it.
+    ///
+    /// `apiKey` is only replaced when a non-empty value arrives, so the phone can
+    /// save other fields without ever having to hold or resend the key.
+    @discardableResult
+    public func updateLLMConfig(_ apply: (inout LLMConfig) -> Void) throws -> LLMConfig {
+        configLock.lock()
+        apply(&config.llm)
+        let snapshot = config
+        configLock.unlock()
+
+        try ConfigStore.save(snapshot, to: configURL)
+        Log.info("LLM 配置已更新：provider=\(snapshot.llm.provider.rawValue) model=\(snapshot.llm.model) enabled=\(snapshot.llm.enabled)")
+        bus.broadcast(event: "settings", payload: ["llm": snapshot.llm.publicJSON])
+        return snapshot.llm
+    }
+
+    /// Asks the configured vision model about a frame.
+    ///
+    /// The image is whatever the phone is looking at: an explicit `shotID` when it
+    /// names one (so you can ask about a frame from history), otherwise the newest
+    /// frame. With nothing captured yet it takes one, so a first question still works.
+    public func askAboutScreen(
+        question: String,
+        history: [LLMTurn],
+        shotID: String?
+    ) async throws -> LLMAnswer {
+        let config = currentConfig().llm
+        guard config.enabled else { throw LLMError.notConfigured }
+
+        let shot: Shot
+        if let shotID, let named = store.shot(id: shotID) {
+            shot = named
+        } else if let latest = store.latest() {
+            shot = latest
+        } else {
+            shot = try await captureNow(trigger: .api, push: false)
+        }
+
+        let answer = try await LLMClient.ask(
+            question: question,
+            history: history,
+            image: shot,
+            config: config
+        )
+        Log.info("LLM 已作答：\(answer.model)，输入 \(answer.inputTokens ?? 0) tokens，输出 \(answer.outputTokens ?? 0) tokens")
+        return answer
     }
 
     // MARK: - Notifications
