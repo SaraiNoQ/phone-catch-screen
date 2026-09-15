@@ -68,7 +68,7 @@ public enum CaptureError: Error, CustomStringConvertible {
     public var description: String {
         switch self {
         case .screenRecordingPermissionDenied:
-            return "缺少「屏幕录制」权限。打开 系统设置 → 隐私与安全性 → 屏幕录制，勾选 ScreenBeam。"
+            return "缺少「屏幕录制」权限。打开 系统设置 → 隐私与安全性 → 屏幕录制，勾选 \(BeamPaths.appDisplayName)。"
         case .noDisplayAvailable:
             return "没有找到可用显示器。"
         case .noFrontmostWindow:

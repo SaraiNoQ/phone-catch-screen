@@ -15,6 +15,10 @@ public enum BeamPaths {
     /// which is the normal split between a product name and its command.
     public static let appName = "PHONE-CATCH-SCREEN"
 
+    /// Same name with the separator the UI uses. Kept separate from `appName`
+    /// because HTTP header values must stay ASCII.
+    public static let appDisplayName = "PHONE·CATCH·SCREEN"
+
     public static var supportDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent(appName, isDirectory: true)

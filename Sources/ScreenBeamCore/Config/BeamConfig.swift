@@ -197,7 +197,7 @@ public struct NotifyConfig: Codable, Sendable {
 
     public init(
         onManualCapture: Bool = false,
-        caption: String = "ScreenBeam · {host} · {time}",
+        caption: String = "\(BeamPaths.appDisplayName) · {host} · {time}",
         channels: [NotifyChannel] = []
     ) {
         self.onManualCapture = onManualCapture
@@ -208,7 +208,7 @@ public struct NotifyConfig: Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         onManualCapture = c.value(.onManualCapture, false)
-        caption = c.value(.caption, "ScreenBeam · {host} · {time}")
+        caption = c.value(.caption, "\(BeamPaths.appDisplayName) · {host} · {time}")
         channels = c.value(.channels, [])
     }
 }

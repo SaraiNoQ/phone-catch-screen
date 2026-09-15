@@ -100,7 +100,7 @@ public final class HTTPResponder {
             self.state = .streaming
 
             var head = "HTTP/1.1 \(status) \(HTTPResponse.reason(for: status))\r\n"
-            head += "Server: ScreenBeam\r\n"
+            head += "Server: \(BeamPaths.appName)\r\n"
             for (name, value) in headers {
                 head += "\(name): \(value)\r\n"
             }

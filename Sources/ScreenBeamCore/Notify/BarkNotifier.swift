@@ -24,11 +24,11 @@ struct BarkNotifier: Notifier {
             // The key can go in the body or the path; body keeps one code path
             // for both `api.day.app` and self-hosted instances.
             "device_key": deviceKey,
-            "title": "ScreenBeam",
+            "title": BeamPaths.appDisplayName,
             "body": payload.caption,
             // Tap target. Also the only thing that works without a public URL.
             "url": payload.viewerURL,
-            "group": "ScreenBeam",
+            "group": BeamPaths.appDisplayName,
             "isArchive": 1,
         ]
         if let sound { body["sound"] = sound }

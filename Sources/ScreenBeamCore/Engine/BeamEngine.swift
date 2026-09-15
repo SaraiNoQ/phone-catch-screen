@@ -166,7 +166,7 @@ public final class BeamEngine: @unchecked Sendable {
         permissionTask = nil
         server?.stop()
         server = nil
-        Log.info("ScreenBeam 已停止。")
+        Log.info("\(BeamPaths.appDisplayName) 已停止。")
     }
 
     /// Port the server actually bound to. Differs from the configured value when
@@ -203,7 +203,7 @@ public final class BeamEngine: @unchecked Sendable {
         let requiresRestart = previous.server.port != fresh.server.port
             || previous.server.host != fresh.server.host
         if requiresRestart {
-            Log.warn("server.host / server.port 已变更，需要重启 ScreenBeam 才能生效。")
+            Log.warn("server.host / server.port 已变更，需要重启 \(BeamPaths.appDisplayName) 才能生效。")
         }
 
         let tokenChanged = previous.server.token != fresh.server.token
@@ -378,7 +378,7 @@ public final class BeamEngine: @unchecked Sendable {
 
         Log.warn("尚未获得「屏幕录制」权限。")
         ScreenRecordingPermission.request()
-        Log.warn("请打开 系统设置 → 隐私与安全性 → 屏幕录制，勾选 ScreenBeam。")
+        Log.warn("请打开 系统设置 → 隐私与安全性 → 屏幕录制，勾选 \(BeamPaths.appDisplayName)。")
 
         permissionTask = Task { [weak self] in
             guard let self else { return }

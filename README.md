@@ -552,7 +552,7 @@ scripts/                              build / install / uninstall
 ./scripts/uninstall.sh
 ```
 
-会停掉服务、移除 `~/Applications/ScreenBeam.app` 和 LaunchAgent。配置和日志保留在：
+会停掉服务、移除 `~/Applications/PHONE-CATCH-SCREEN.app` 和 LaunchAgent。配置和日志保留在：
 
 ```
 ~/Library/Application Support/ScreenBeam/

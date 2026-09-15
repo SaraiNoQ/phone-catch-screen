@@ -8,7 +8,7 @@ enum NotifySupport {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = timeout
-        request.setValue("ScreenBeam/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("\(BeamPaths.appName)/\(ScreenBeamVersion.current)", forHTTPHeaderField: "User-Agent")
         return request
     }
 
@@ -83,7 +83,7 @@ struct MultipartFormData {
     let boundary: String
     private var body = Data()
 
-    init(boundary: String = "----ScreenBeamBoundary\(UUID().uuidString)") {
+    init(boundary: String = "----\(BeamPaths.appName)Boundary\(UUID().uuidString)") {
         self.boundary = boundary
     }
 

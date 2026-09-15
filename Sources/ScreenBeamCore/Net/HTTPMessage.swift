@@ -188,7 +188,7 @@ public struct HTTPResponse: Sendable {
 
         var allHeaders = headers
         allHeaders.append(("Content-Length", String(body.count)))
-        allHeaders.append(("Server", "ScreenBeam"))
+        allHeaders.append(("Server", BeamPaths.appName))
         // A capture can expose anything on screen, so no caching anywhere.
         if !allHeaders.contains(where: { $0.0.lowercased() == "cache-control" }) {
             allHeaders.append(("Cache-Control", "no-store, no-cache, must-revalidate"))

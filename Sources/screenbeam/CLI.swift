@@ -245,7 +245,7 @@ enum CLI {
             if args.has("json") {
                 print(jsonString(["ok": false, "running": false]))
             } else {
-                print(Term.warn("ScreenBeam 服务未运行。"))
+                print(Term.warn("\(BeamPaths.appDisplayName) 服务未运行。"))
                 print(Term.dim("  启动：screenbeam start（后台） 或 screenbeam run（前台）"))
                 if Installer.isLoaded() {
                     print(Term.dim("  LaunchAgent 已注册但进程未响应，试试 screenbeam restart"))
@@ -271,7 +271,7 @@ enum CLI {
         let uptime = (status["uptimeSeconds"] as? Int) ?? 0
 
         print("")
-        print("  " + Term.bold("ScreenBeam") + " " + (status["version"] as? String ?? ""))
+        print("  " + Term.bold(BeamPaths.appDisplayName) + " " + (status["version"] as? String ?? ""))
         print("")
         row("主机", status["host"] as? String ?? "-")
         row("运行时长", formatDuration(uptime))
@@ -621,7 +621,7 @@ enum CLI {
     private static func printHelp() {
         print("""
 
-        \(Term.bold("ScreenBeam")) — 后台截屏，手机随时查看
+        \(Term.bold(BeamPaths.appDisplayName)) — 后台截屏，手机随时查看
         \(Term.dim("仅在 macOS 14+ 上运行，截图依赖 ScreenCaptureKit。"))
 
         \(Term.bold("用法"))

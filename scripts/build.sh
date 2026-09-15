@@ -35,7 +35,9 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 echo "==> 组装 $APP"
-rm -rf "$APP"
+# Clear every bundle, not just the one we are about to build. A leftover from an
+# earlier name would otherwise linger in dist/ and could be picked up by install.
+rm -rf "$DIST"/*.app
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp "$BIN" "$APP/Contents/MacOS/screenbeam"

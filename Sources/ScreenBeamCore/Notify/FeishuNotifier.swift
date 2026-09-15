@@ -135,7 +135,7 @@ struct FeishuNotifier: Notifier {
             "config": ["wide_screen_mode": true],
             "header": [
                 "template": "blue",
-                "title": ["tag": "plain_text", "content": "ScreenBeam 截图"],
+                "title": ["tag": "plain_text", "content": "\(BeamPaths.appDisplayName) 截图"],
             ],
             "elements": [
                 ["tag": "div", "text": ["tag": "lark_md", "content": payload.caption]],

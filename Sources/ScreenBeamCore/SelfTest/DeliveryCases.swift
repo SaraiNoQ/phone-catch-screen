@@ -25,7 +25,7 @@ enum DeliveryCases {
         }),
 
         ("webhook 转义保留中文", {
-            let text = "截图完成 · ScreenBeam — 3 张"
+            let text = "截图完成 · \(BeamPaths.appDisplayName) — 3 张"
             let escaped = NotifySupport.jsonEscape(text)
             try checkEqual(escaped, text, "无需转义的文本应原样保留")
         }),
