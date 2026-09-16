@@ -55,6 +55,30 @@ enum CaptureCases {
                 try checkEqual(signature.gray.count, expected, "\(size)px 的签名长度")
             }
         }),
+
+        // Whether capture is permitted must come from what actually happened, not
+        // from the TCC preflight — that answer is cached for the life of the
+        // process and reads stale after a rebuild.
+        ("权限状态由实测结果推导，最近一次为准", {
+            typealias State = BeamEngine.CapturePermissionState
+
+            try checkEqual(State.derive(lastSuccess: nil, lastPermissionFailure: nil), .unknown, "从未尝试")
+
+            let t0 = Date(timeIntervalSince1970: 1_000)
+            let t1 = Date(timeIntervalSince1970: 2_000)
+
+            try checkEqual(State.derive(lastSuccess: t0, lastPermissionFailure: nil), .working, "只成功过")
+            try checkEqual(State.derive(lastSuccess: nil, lastPermissionFailure: t0), .denied, "只失败过")
+
+            try checkEqual(
+                State.derive(lastSuccess: t1, lastPermissionFailure: t0), .working,
+                "先失败后成功 —— 应报告可用"
+            )
+            try checkEqual(
+                State.derive(lastSuccess: t0, lastPermissionFailure: t1), .denied,
+                "先成功后失败 —— 应报告不可用"
+            )
+        }),
     ]
 
     // MARK: - Helpers

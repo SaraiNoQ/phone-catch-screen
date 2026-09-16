@@ -271,7 +271,12 @@ enum CLI {
             print("  " + Term.dim(label.padding(toLength: 14, withPad: " ", startingAt: 0)) + value)
         }
 
-        let permission = (status["permissionGranted"] as? Bool) ?? false
+        // Read from what actually happened, not from the TCC preflight. The
+        // preflight is cached inside the daemon process and can read stale after
+        // a rebuild, so reporting it as the verdict produced "未授权" next to
+        // captures that were succeeding.
+        let captureState = (status["screenCapture"] as? String) ?? "unknown"
+        let preflight = (status["permissionPreflight"] as? Bool) ?? false
         let watching = (status["watching"] as? Bool) ?? false
         let uptime = (status["uptimeSeconds"] as? Int) ?? 0
 
@@ -280,7 +285,14 @@ enum CLI {
         print("")
         row("主机", status["host"] as? String ?? "-")
         row("运行时长", formatDuration(uptime))
-        row("屏幕录制", permission ? Term.ok("已授权") : Term.error("未授权"))
+        switch captureState {
+        case "working":
+            row("屏幕录制", Term.ok("正常") + Term.dim("（已实测截图）"))
+        case "denied":
+            row("屏幕录制", Term.error("缺少权限") + Term.dim("（截图被拒绝）"))
+        default:
+            row("屏幕录制", Term.dim(preflight ? "已授权，尚未截图验证" : "尚未验证"))
+        }
         row("截图次数", String((status["captureCount"] as? Int) ?? 0))
         row("推送次数", String((status["pushCount"] as? Int) ?? 0))
         row("缓存截图", "\((status["storedShots"] as? Int) ?? 0) 张")

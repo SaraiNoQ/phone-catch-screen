@@ -17,6 +17,41 @@ public final class BeamEngine: @unchecked Sendable {
         public var pushCount = 0
         public var lastShotAt: Date?
         public var lastError: String?
+        /// When a capture last actually returned a frame.
+        ///
+        /// This, not the TCC preflight, is what says whether capture works. The
+        /// preflight answer is cached inside the process for its whole life, and
+        /// it can read "not granted" for a freshly rebuilt binary that captures
+        /// perfectly well — which is exactly how a working install was mistaken
+        /// for a broken one, repeatedly.
+        public var lastSuccessfulCaptureAt: Date?
+        /// When a capture last failed specifically because capture is not permitted.
+        public var permissionFailureAt: Date?
+    }
+
+    /// What we actually know about being allowed to capture.
+    public enum CapturePermissionState: String, Sendable {
+        case working
+        case denied
+        case unknown
+
+        /// Derived from observed captures, most recent wins, so it self-corrects
+        /// once anything is attempted.
+        public static func derive(
+            lastSuccess: Date?,
+            lastPermissionFailure: Date?
+        ) -> CapturePermissionState {
+            switch (lastSuccess, lastPermissionFailure) {
+            case let (success?, failure?):
+                return success > failure ? .working : .denied
+            case (_?, nil):
+                return .working
+            case (nil, _?):
+                return .denied
+            case (nil, nil):
+                return .unknown
+            }
+        }
     }
 
     /// Per-process overrides from the command line (`--port`, `--host`, `--token`).
@@ -239,11 +274,19 @@ public final class BeamEngine: @unchecked Sendable {
 
     /// Captures, stores, broadcasts and (optionally) pushes.
     public func captureNow(trigger: Trigger, push: Bool? = nil) async throws -> Shot {
-        try await captureGate.withLock {
-            let (frame, signature) = try await grab()
-            previousSignature = signature
-            let shouldPush = push ?? defaultPushDecision(for: trigger)
-            return try await publish(frame, trigger: trigger, push: shouldPush)
+        do {
+            return try await captureGate.withLock {
+                let (frame, signature) = try await grab()
+                previousSignature = signature
+                let shouldPush = push ?? defaultPushDecision(for: trigger)
+                return try await publish(frame, trigger: trigger, push: shouldPush)
+            }
+        } catch {
+            // Recorded here as well as in the watch loop: a phone-triggered
+            // capture that fails on permission is exactly the signal `status`
+            // needs, and it used to be dropped on the floor.
+            recordFailure(error)
+            throw error
         }
     }
 
@@ -391,15 +434,15 @@ public final class BeamEngine: @unchecked Sendable {
             return
         }
 
-        Log.warn("尚未获得「屏幕录制」权限。")
+        Log.warn("系统预检报告屏幕录制权限缺失，正在请求。")
         // Requested from here rather than from the installer on purpose: the
         // process asking must be the app itself. Run by launchd, this call is
         // attributed to the app, so the app gets registered in the pane and the
         // consent dialog names it. A request made from a shell would be
         // attributed to the terminal instead.
         ScreenRecordingPermission.request()
-        Log.warn("请打开 系统设置 → 隐私与安全性 → 屏幕录制，勾选 \(BeamPaths.appDisplayName)。")
-        Log.warn("勾选后若仍未生效，执行 screenbeam restart（预检结果在进程内是缓存的）。")
+        Log.warn("若确实没有权限：系统设置 → 隐私与安全性 → 屏幕录制，勾选 \(BeamPaths.appDisplayName)，然后 screenbeam restart。")
+        Log.debug("预检结果在进程内是缓存的，可能对已重建的二进制报旧值；实际能否截图以截图结果为准。")
 
         permissionTask = Task { [weak self] in
             guard let self else { return }
@@ -683,7 +726,13 @@ public final class BeamEngine: @unchecked Sendable {
             "storedShots": store.count,
             "watchers": bus.subscriberCount,
             "watching": isWatching,
-            "permissionGranted": permissionGranted,
+            // The preflight is kept for diagnosis, but `screenCapture` is the one
+            // to act on: it reports what actually happened last time we tried.
+            "permissionPreflight": permissionGranted,
+            "screenCapture": CapturePermissionState.derive(
+                lastSuccess: snapshot.lastSuccessfulCaptureAt,
+                lastPermissionFailure: snapshot.permissionFailureAt
+            ).rawValue,
             "notifiers": notifierService.activeLabels,
             "pairedDevices": devices.count,
             "awaitingPairing": pairing.hasPendingCode,
@@ -725,6 +774,8 @@ public final class BeamEngine: @unchecked Sendable {
         stateLock.lock()
         stats.captureCount += 1
         stats.lastShotAt = shot.createdAt
+        stats.lastSuccessfulCaptureAt = shot.createdAt
+        stats.permissionFailureAt = nil
         stats.lastError = nil
         stateLock.unlock()
     }
@@ -732,6 +783,9 @@ public final class BeamEngine: @unchecked Sendable {
     private func recordFailure(_ error: Error) {
         stateLock.lock()
         stats.lastError = String(describing: error)
+        if case CaptureError.screenRecordingPermissionDenied = error {
+            stats.permissionFailureAt = Date()
+        }
         stateLock.unlock()
     }
 

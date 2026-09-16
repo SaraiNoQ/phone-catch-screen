@@ -1,83 +1,83 @@
 # AGENTS.md — 在本仓库工作前必读
 
-## 每次重新构建后，必须走完这三步
+## 屏幕录制权限与重建：实测行为不一致，按「失败就补」处理
 
-这个 app 是 **ad-hoc 签名**（没有 Apple 开发者证书），`codesign -dv` 会显示 `TeamIdentifier=not set`。
-这意味着 **TCC 只能靠二进制的 CDHash 认出「你是谁」**。每次 `scripts/build.sh` 重新编译，CDHash 就变了，
-系统设置里那条屏幕录制授权指向的二进制**已经不存在了**。
+这个 app 是 ad-hoc 签名（`codesign -dv` 显示 `TeamIdentifier=not set`），TCC 对它的识别依赖二进制的
+代码哈希。**重建之后权限是否还有效，实测是不一致的：**
 
-**症状：开关是开着的，但截图报「缺少屏幕录制权限」。** 这是最容易误判的一类故障 ——
-不会报错、不会提示记录失效，你会以为是代码坏了。
+| 观察 | 结果 |
+| --- | --- |
+| 某次重建替换安装后 | 整屏和窗口模式截图**都正常**，没碰系统设置 |
+| 另一次重建替换安装后 | 截图**失败**，报缺少权限 |
+| 同一台机器、同样的操作 | **两次结果不同** |
 
-三步走：
+所以不要预设任何一种结论 —— **以实际截图结果为准**，失败再补。这是 ad-hoc 的固有表现，
+想要稳定就给 app 一个固定身份（见下「自签名证书」）。
 
-```bash
-# 1. 手动：系统设置 → 隐私与安全性 → 屏幕录制
-#    选中 PHONE-CATCH-SCREEN，点列表下方的 − 删掉这条记录
-#    （脚本做不了，macOS 不允许程序改这个列表）
+**不要相信预检值。** `status` 里的 `permissionPreflight` 是 `CGPreflightScreenCaptureAccess()` 的结果，
+它在进程内被缓存：一个进程被回答过「没有权限」之后会一直这么回答，即使权限本身有效。看 `screenCapture` 字段：
 
-# 2. 重启服务 —— 它会在系统设置里重新登记自己并弹出授权对话框，点「允许」
-~/Applications/PHONE-CATCH-SCREEN.app/Contents/MacOS/screenbeam restart
+| `screenCapture` | 含义 |
+| --- | --- |
+| `working` | 最近一次截图成功了 —— **这就是结论** |
+| `denied` | 最近一次截图因权限被拒 |
+| `unknown` | 还没截过图 |
 
-# 3. 再重启一次，让新授权对这个新进程生效
-#    （第 2 步那个进程在启动时就把「未授权」缓存下来了，它自己感知不到变化）
-~/Applications/PHONE-CATCH-SCREEN.app/Contents/MacOS/screenbeam restart
-```
-
-验证：
-
-```bash
-~/Applications/PHONE-CATCH-SCREEN.app/Contents/MacOS/screenbeam status
-```
-
-「屏幕录制」显示 **已授权** 才算通过。若仍是「未授权」，回到第 1 步确认记录删干净了。
-
-> 也可以省掉第 2 步的对话框：删掉记录后直接 restart，然后**手动**在系统设置里把
-> PHONE-CATCH-SCREEN 勾上（这时列表里已经有它了），再执行第 3 步。
-
-完整流程：
+**截图报「缺少屏幕录制权限」时的处理顺序：**
 
 ```bash
-./scripts/install.sh      # 构建 + 安装 + 注册服务
-# 然后手动做上面第 1 步，再 restart 两次
+BIN=~/Applications/PHONE-CATCH-SCREEN.app/Contents/MacOS/screenbeam
+
+# 1. 先重启一次 —— 新进程会重新读权限，有时这样就够了
+"$BIN" restart && sleep 5 && "$BIN" status
+
+# 2. 仍然失败：清掉那条陈旧记录
+tccutil reset ScreenCapture com.sarainoq.screenbeam
+
+# 3. 重启，让守护进程重新登记自己并弹出授权对话框，点「允许」
+"$BIN" restart
+
+# 4. 再重启一次让新授权生效，然后验证
+"$BIN" restart && sleep 5 && "$BIN" status
 ```
 
----
+`tccutil reset` 就是之前要手动去系统设置点减号那一步的命令行版本，不需要 sudo。
 
-## 为什么第 2 步用 `restart`，而不是 `open -a` 或直接跑二进制
-
-TCC 把授权记在**责任进程**（responsible process）头上，三种启动方式结果完全不同：
+## 为什么安装脚本不自己去申请权限
 
 | 启动方式 | 请求算在谁头上 | 结果 |
 | --- | --- | --- |
-| 直接执行 `.../Contents/MacOS/screenbeam perm --request` | **调用者的终端** | 终端早就有屏幕录制权限了，所以命令**假装成功**（打印「已授权」），但 app 根本没进列表、也没弹对话框 |
-| `open -a PHONE-CATCH-SCREEN.app --args perm --request` | app 自己 | 身份对了，**但** LaunchServices 启动的这个 app 和 LaunchAgent 是同一个程序 —— 两者抢同一个进程，那个实例退出后 agent 就掉线了。**别用这个。** |
-| `launchctl` 启动的守护进程内部申请 | app 自己 | ✅ 身份正确，且不与 agent 冲突。所以走 `restart` |
+| 直接执行 `.../Contents/MacOS/screenbeam perm --request` | **调用者的终端** | 终端早就有屏幕录制权限，所以命令**假装成功**（打印「已授权」），但 app 根本没进列表 |
+| `open -a PHONE-CATCH-SCREEN.app --args perm --request` | app 自己 | 身份对了，**但** LaunchServices 启动的 app 和 LaunchAgent 是同一个程序，两者抢同一个进程，那个实例退出后 agent 掉线。**别用这个。** |
+| `launchctl` 启动的守护进程内部申请 | app 自己 | ✅ 身份正确，且不与 agent 冲突 |
 
-**推论：不要相信「从终端跑这个二进制说已授权」这个信号。** 它会继承终端的权限。
-唯一可信的判断是 **launchd 启动的守护进程**（`screenbeam status`），因为它不继承任何终端权限。
+**推论：不要相信「从终端跑这个二进制说已授权」这个信号** —— 它继承终端的权限。可信的是
+launchd 启动的守护进程，因为它不继承任何终端权限。
 
 ---
 
-## 根治办法（强烈建议，能省掉上面全部三步）
+## 自签名证书（建议做，能根治上面这条）
 
-建一张**自签名代码签名证书**放进登录钥匙串，给 app 一个稳定身份。CDHash 不再随重建变化，
-授权一次长期有效。`scripts/build.sh` 会自动检测并使用任何可用的签名身份。
+给 app 一个固定身份后，TCC 记录不再随重建变化，上表那种「这次行下次不行」就消失了。
+`scripts/build.sh` 会自动检测并使用任何可用的签名身份。
 
-代价：会在登录钥匙串里多一张证书（随时可删）。仅当你要连续改这个项目时才值得建。
+创建方式（Keychain Access → 证书助理 → 创建证书，类型选「代码签名」），或让 Claude 用
+`openssl` + `security import` 做 —— 后者需要你手动跑一次 `security set-key-partition-list`
+（要输入你的登录密码，Claude 不应代持）。
 
 ---
 
 ## 其他容易踩的
 
 - **`swift test` 在这台机器上用不了**：XCTest 和 swift-testing 都需要完整 Xcode，这里只有
-  Command Line Tools。测试用例编译在库里，用 `screenbeam selftest` 跑。
+  Command Line Tools。测试用例编译在库里，用 `screenbeam selftest` 跑（当前 101 项）。
 - **改代码前先看 `CLEANUP.md`**：里面列了本项目在这台机器上创建了什么、哪些不能删。
 - **不要删 `~/Library/Application Support/PHONE-CATCH-SCREEN/devices.json`**：里面是已配对手机的
   凭据哈希。删了对方就得重新配对。
+- **不要用 `--config` 跑测试**而不清理：虽然 `devices.json` 现在跟随配置文件所在目录，
+  但用真实配置跑测试仍然会写真实状态。
 - **`screenbeam` 不在 PATH**：完整路径是 `~/Applications/PHONE-CATCH-SCREEN.app/Contents/MacOS/screenbeam`。
 - **调 LLM 的代码不要凭记忆写**：用 `claude-api` skill 核对请求形状（模型 ID、`max_tokens`、
-  thinking、refusal 处理都在变）。`Sources/ScreenBeamCore/LLM/LLMClient.swift` 里的形状是核对过的，
-  改动前先读那里的注释。
+  thinking、refusal 处理都在变）。`Sources/ScreenBeamCore/LLM/LLMClient.swift` 里的形状是核对过的。
 - **不要用这台机器上的 `ANTHROPIC_*` 环境变量做测试**：那是 Claude Code 会话自己的凭据和本地代理，
-  不是给这个 app 用的。要验证真实调用，让用户自己填 API Key。
+  不是给这个 app 用的。
