@@ -6,7 +6,7 @@ enum ConfigCases {
     static let all: [(String, () throws -> Void)] = [
         ("空对象解码出完整默认值", {
             let config = try decode("{}")
-            try checkEqual(config.server.host, "0.0.0.0", "host")
+            try checkEqual(config.server.host, "127.0.0.1", "host（默认应为回环）")
             try checkEqual(config.server.port, 8787, "port")
             try checkEqual(config.capture.mode, .display, "capture.mode")
             try checkEqual(config.capture.format, .jpeg, "capture.format")
@@ -20,7 +20,7 @@ enum ConfigCases {
         ("部分字段缺失时保留同级默认值", {
             let config = try decode(#"{"server":{"port":9000}}"#)
             try checkEqual(config.server.port, 9000, "指定值")
-            try checkEqual(config.server.host, "0.0.0.0", "未指定的同级字段")
+            try checkEqual(config.server.host, "127.0.0.1", "未指定的同级字段回退到回环默认值")
         }),
 
         // A typo should degrade to the default rather than stop the service from
@@ -130,6 +130,87 @@ enum ConfigCases {
         ("未知占位符保持原样", {
             let rendered = CaptionTemplate.render("{nope}", shot: sampleShot(), hostName: "mac", viewerURL: "u")
             try checkEqual(rendered, "{nope}", "未知占位符")
+        }),
+
+        // ---- Exposure defaults -------------------------------------------
+        //
+        // These are the settings that decide whether the service is reachable
+        // from anywhere but this machine. They are asserted because a default is
+        // exactly the kind of thing that gets changed casually and then ships.
+
+        ("默认只绑本机，不对局域网暴露", {
+            let config = ConfigStore.defaultConfig()
+            try check(config.server.isLoopbackOnly, "默认 host 应为 \(config.server.host)，现在不是回环地址")
+            try checkEqual(config.server.host, "127.0.0.1", "默认 host")
+
+            // And the same for a config file that omits the key entirely.
+            let minimal = try JSONDecoder().decode(BeamConfig.self, from: Data("{}".utf8))
+            try check(minimal.server.isLoopbackOnly, "缺省 host 应为回环地址")
+        }),
+
+        ("显式配置的局域网绑定仍然生效", {
+            // Opening it up has to stay possible — it is how the phone connects.
+            let config = try decode(#"{"server":{"host":"0.0.0.0"}}"#)
+            try check(!config.server.isLoopbackOnly, "显式写 0.0.0.0 应生效")
+        }),
+
+        ("日志级别默认不过度记录", {
+            let config = ConfigStore.defaultConfig()
+            try checkEqual(config.logging.level, .normal, "默认级别")
+            try check(
+                config.logging.level != .debug,
+                "默认不应是 debug —— 那会把每次截图都写进日志"
+            )
+
+            let minimal = try JSONDecoder().decode(BeamConfig.self, from: Data("{}".utf8))
+            try checkEqual(minimal.logging.level, .normal, "缺省级别")
+        }),
+
+        ("日志级别可配置，非法值回退", {
+            try checkEqual(
+                try decode(#"{"logging":{"level":"debug"}}"#).logging.level, .debug, "debug"
+            )
+            try checkEqual(
+                try decode(#"{"logging":{"level":"quiet"}}"#).logging.level, .quiet, "quiet"
+            )
+            try checkEqual(
+                try decode(#"{"logging":{"level":"verbose"}}"#).logging.level, .normal,
+                "非法值应回退到 normal"
+            )
+        }),
+
+        ("三个日志级别都在（quiet 不会被悄悄删掉）", {
+            try checkEqual(
+                Set(LogLevel.allCases), Set([.quiet, .normal, .debug]),
+                "级别集合"
+            )
+        }),
+
+        ("配置往返不丢 logging 段", {
+            var original = ConfigStore.defaultConfig()
+            original.logging.level = .debug
+            let data = try JSONEncoder().encode(original)
+            let decoded = try JSONDecoder().decode(BeamConfig.self, from: data)
+            try checkEqual(decoded.logging.level, .debug, "logging.level")
+        }),
+
+        // The config file holds the LLM API key in the clear, so it must not be
+        // left at the umask default the way `Data.write` creates it.
+        ("写出的配置文件权限为 600", {
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("screenbeam-perm-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+
+            let url = directory.appendingPathComponent("config.json")
+            try ConfigStore.save(ConfigStore.defaultConfig(), to: url)
+
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0
+            try checkEqual(
+                permissions & 0o077, 0,
+                "配置文件的组/其他权限应为空，实际 \(String(permissions, radix: 8))"
+            )
         }),
     ]
 

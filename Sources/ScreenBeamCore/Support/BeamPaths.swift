@@ -58,5 +58,32 @@ public enum BeamPaths {
         for dir in [supportDirectory, logDirectory] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
+        // Owner-only. The support directory holds credentials and the log
+        // directory holds a record of when the screen was captured; neither has
+        // any reason to be readable by other accounts.
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: supportDirectory.path
+        )
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: logDirectory.path
+        )
+    }
+
+    /// The daemon's stdout and stderr are redirected into files by launchd, which
+    /// creates them with the process umask — typically world-readable. A capture
+    /// log is a record of when the screen was being watched, so tighten it.
+    ///
+    /// Not a defence against another process running as this user — nothing on
+    /// macOS is — but it does keep the log out of reach of other accounts and of
+    /// anything that merely reads broadly.
+    public static func tightenLogPermissions() {
+        let manager = FileManager.default
+        for name in ["out.log", "err.log"] {
+            let path = logDirectory.appendingPathComponent(name).path
+            guard manager.fileExists(atPath: path) else { continue }
+            try? manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        }
     }
 }

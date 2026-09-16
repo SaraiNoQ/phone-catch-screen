@@ -93,7 +93,7 @@ public final class NotifierService: @unchecked Sendable {
                 group.addTask {
                     do {
                         try await notifier.send(payload)
-                        Log.info("推送成功：[\(notifier.label)]")
+                        Log.debug("推送成功：[\(notifier.label)]")
                     } catch {
                         Log.error("推送失败 [\(notifier.label)]：\(error)")
                     }

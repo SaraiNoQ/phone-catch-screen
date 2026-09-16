@@ -198,7 +198,7 @@ enum Router {
         case ["api", "pair", "code"] where isPost:
             guard requireMaster(credential, responder) else { return }
             let code = engine.issuePairingCode()
-            Log.info("已生成配对码，\(code.remainingSeconds) 秒内有效。")
+            Log.debug("已生成配对码，\(code.remainingSeconds) 秒内有效。")
             responder.respond(.json(["ok": true, "pairing": code.json]))
 
         case ["api", "devices"] where isGet:

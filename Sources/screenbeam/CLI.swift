@@ -79,8 +79,13 @@ enum CLI {
     // MARK: - run
 
     private static func runDaemon(_ args: Arguments) async throws {
-        Log.mirrorToStderr = true
         let config = try loadConfig(args)
+
+        // Level first, so nothing logs before it is applied. `SCREENBEAM_LOG`
+        // wins, which lets a development run be verbose without touching config.
+        Log.level = Log.resolveLevel(configLevel: config.logging.level)
+        Log.mirrorToStderr = true
+        BeamPaths.tightenLogPermissions()
 
         // Under launchd we must exit(1) after a permission grant so the agent
         // restarts us with the grant applied — macOS does not apply a fresh

@@ -151,11 +151,20 @@ public final class BeamEngine: @unchecked Sendable {
 
         Log.info("HTTP 服务已启动：http://\(current.server.host):\(server.boundPort)")
 
+        // Say it out loud when the service is reachable beyond this machine. The
+        // setting is a deliberate opt-in, and the consequence is easy to forget.
+        if !current.server.isLoopbackOnly {
+            Log.warn("服务已对局域网开放（server.host = \(current.server.host)）：同一网络下的其他设备可以访问本服务的端口。")
+            Log.warn("只想本机使用就把 config.json 的 server.host 改回 127.0.0.1。")
+        }
+
         // First run has nothing paired, so put a code on the table immediately —
         // otherwise the phone would connect and have no way in.
         if devices.isEmpty {
             let code = pairing.issue()
-            Log.info("尚未配对任何设备，已生成配对码：\(code.value)（\(Int(code.expiresAt.timeIntervalSinceNow / 60) + 1) 分钟内有效）")
+            // Not the code value: it is a credential, and the CLI prints it
+            // where the operator can see it. The log only needs to say one exists.
+            Log.debug("尚未配对任何设备，已生成配对码（\(code.remainingSeconds) 秒内有效）")
         }
 
         supervisePermission()
@@ -271,7 +280,7 @@ public final class BeamEngine: @unchecked Sendable {
 
         store.add(shot)
         recordSuccess(shot)
-        Log.info("已截图 \(shot.id) [\(trigger.rawValue)] \(shot.pixelWidth)×\(shot.pixelHeight) \(shot.byteCount / 1024)KB")
+        Log.debug("已截图 \(shot.id) [\(trigger.rawValue)] \(shot.pixelWidth)×\(shot.pixelHeight) \(shot.byteCount / 1024)KB")
 
         bus.broadcast(event: "shot", payload: ShotJSON.encode(shot))
 
@@ -298,7 +307,7 @@ public final class BeamEngine: @unchecked Sendable {
     public func startWatch() {
         guard watchTask == nil else { return }
 
-        Log.info("已开启定时截图。")
+        Log.debug("已开启定时截图。")
         watchTask = Task { [weak self] in
             await self?.runWatchLoop()
         }
@@ -309,7 +318,7 @@ public final class BeamEngine: @unchecked Sendable {
         guard watchTask != nil else { return }
         watchTask?.cancel()
         watchTask = nil
-        Log.info("已停止定时截图。")
+        Log.debug("已停止定时截图。")
         broadcastWatchState()
     }
 
@@ -502,7 +511,7 @@ public final class BeamEngine: @unchecked Sendable {
         configLock.unlock()
 
         try ConfigStore.save(snapshot, to: configURL)
-        Log.info("截图模式已切换为 \(mode.rawValue)")
+        Log.debug("截图模式已切换为 \(mode.rawValue)")
         bus.broadcast(event: "settings", payload: ["captureMode": mode.rawValue])
     }
 
@@ -573,7 +582,7 @@ public final class BeamEngine: @unchecked Sendable {
             image: shot,
             config: config
         )
-        Log.info("LLM 已作答：\(answer.model)，输入 \(answer.inputTokens ?? 0) tokens，输出 \(answer.outputTokens ?? 0) tokens")
+        Log.debug("LLM 已作答：\(answer.model)，输入 \(answer.inputTokens ?? 0) tokens，输出 \(answer.outputTokens ?? 0) tokens")
         return answer
     }
 

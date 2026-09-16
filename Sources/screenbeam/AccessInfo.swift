@@ -105,8 +105,14 @@ enum AccessInfo {
 
         if config.server.isLoopbackOnly {
             print("")
-            print("  " + Term.warn("当前 server.host = \(config.server.host)，仅允许本机访问。"))
-            print("  " + Term.warn("要让手机连上，请把 config.json 里的 host 改为 0.0.0.0 并重启。"))
+            print("  " + Term.dim("当前 server.host = \(config.server.host)：仅本机可访问。"))
+            print("  " + Term.dim("要让手机连上，把 config.json 里的 host 改成 0.0.0.0 并重启。"))
+        } else {
+            print("")
+            print("  " + Term.warn("服务已对局域网开放（server.host = \(config.server.host)）"))
+            print("  " + Term.warn("同一网络下的其他设备都能访问这个端口 —— 这是手机能连上的前提，"))
+            print("  " + Term.warn("但也意味着在不受控的网络（咖啡馆、酒店）里应当把它关掉。"))
+            print("  " + Term.dim("只想本机使用：把 host 改回 127.0.0.1。"))
         }
 
         print("")

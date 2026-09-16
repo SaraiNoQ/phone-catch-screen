@@ -27,7 +27,7 @@ public final class EventBus {
             }
             startHeartbeatIfNeeded()
         }
-        Log.info("查看端已连接，当前在线 \(subscriberCount) 个。")
+        Log.debug("查看端已连接，当前在线 \(subscriberCount) 个。")
         return id
     }
 
@@ -35,7 +35,7 @@ public final class EventBus {
         queue.async { [weak self] in
             guard let self else { return }
             guard self.subscribers.removeValue(forKey: id) != nil else { return }
-            Log.info("查看端已断开，当前在线 \(self.subscribers.count) 个。")
+            Log.debug("查看端已断开，当前在线 \(self.subscribers.count) 个。")
             if self.subscribers.isEmpty {
                 self.stopHeartbeat()
             }

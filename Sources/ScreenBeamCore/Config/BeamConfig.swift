@@ -22,6 +22,7 @@ public struct BeamConfig: Codable, Sendable {
     public var history: HistoryConfig
     public var notify: NotifyConfig
     public var llm: LLMConfig
+    public var logging: LoggingConfig
 
     public init(
         server: ServerConfig = ServerConfig(),
@@ -29,7 +30,8 @@ public struct BeamConfig: Codable, Sendable {
         watch: WatchConfig = WatchConfig(),
         history: HistoryConfig = HistoryConfig(),
         notify: NotifyConfig = NotifyConfig(),
-        llm: LLMConfig = LLMConfig()
+        llm: LLMConfig = LLMConfig(),
+        logging: LoggingConfig = LoggingConfig()
     ) {
         self.server = server
         self.capture = capture
@@ -37,6 +39,7 @@ public struct BeamConfig: Codable, Sendable {
         self.history = history
         self.notify = notify
         self.llm = llm
+        self.logging = logging
     }
 
     public init(from decoder: Decoder) throws {
@@ -47,13 +50,14 @@ public struct BeamConfig: Codable, Sendable {
         history = c.value(.history, HistoryConfig())
         notify = c.value(.notify, NotifyConfig())
         llm = c.value(.llm, LLMConfig())
+        logging = c.value(.logging, LoggingConfig())
     }
 }
 
 public struct ServerConfig: Codable, Sendable {
-    /// `127.0.0.1` keeps the viewer Mac-only. `0.0.0.0` exposes it to the LAN so
-    /// your phone can reach it — that is the whole point, but it also means
-    /// anyone on the same Wi-Fi can reach it if they learn the token.
+    /// `127.0.0.1` by default. The service is an endpoint that streams your
+    /// screen, so it starts closed and the operator opens it deliberately by
+    /// setting `0.0.0.0`. The startup banner says so when it is open.
     public var host: String
     public var port: Int
     /// Shared secret. Sent as `?token=` or an `X-Auth-Token` header.
@@ -63,7 +67,7 @@ public struct ServerConfig: Codable, Sendable {
     public var publicBaseURL: String?
 
     public init(
-        host: String = "0.0.0.0",
+        host: String = "127.0.0.1",
         port: Int = 8787,
         token: String = "",
         publicBaseURL: String? = nil
@@ -76,7 +80,7 @@ public struct ServerConfig: Codable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        host = c.value(.host, "0.0.0.0")
+        host = c.value(.host, "127.0.0.1")
         port = c.value(.port, 8787)
         token = c.value(.token, "")
         publicBaseURL = try? c.decodeIfPresent(String.self, forKey: .publicBaseURL)
@@ -84,6 +88,20 @@ public struct ServerConfig: Codable, Sendable {
 
     public var isLoopbackOnly: Bool {
         host == "127.0.0.1" || host == "localhost" || host == "::1"
+    }
+}
+
+/// How much the daemon writes down. See `LogLevel`.
+public struct LoggingConfig: Codable, Sendable {
+    public var level: LogLevel
+
+    public init(level: LogLevel = .normal) {
+        self.level = level
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        level = c.value(.level, .normal)
     }
 }
 
@@ -354,6 +372,14 @@ public enum ConfigStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(config)
         try data.write(to: url, options: .atomic)
+
+        // `Data.write` uses the process umask, which is normally world-readable.
+        // This file holds the LLM API key in the clear, so tighten it — the same
+        // treatment `devices.json` already gets.
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: url.path
+        )
     }
 
     public static func randomToken(length: Int = 32) -> String {
